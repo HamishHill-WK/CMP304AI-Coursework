@@ -3,72 +3,19 @@ using namespace std::chrono_literals;
 
 application app;
 
-void vFloatPrint(const std::vector<float>& v) {
-	static int c = 0;
-	std::cout << "combination no " << (++c) << ": [ ";
-	for (int i = 0; i < v.size(); ++i) 
-			std::cout << v[i] << " "; 
-	std::cout << "] " << std::endl;
-}
-
-void vIntPrint1(const std::vector<int>& v) {
-	static int c = 0;
-	std::cout << "combination no " << (++c) << ": [ ";
-	for (int i = 0; i < v.size(); ++i) 
-		 std::cout << v[i] << " ";	
-	std::cout << "] " << std::endl;
-}
-
-float calcReward(tag interest1, item chosenItem, int satisfaction)
-{
-	if (satisfaction >= 4)	//if the user is satisfied give greater reward
-	{
-		if (interest1 == chosenItem.tags)	//greater reward is given towards items of the user's preffered interest
-			return 2.0f;
-
-		if (interest1 != chosenItem.tags)
-			return 1.0f;
-	}
-
-	if (satisfaction <= 1)	//if the user is unsatified give a negative reward
-	{
-		if (interest1 == chosenItem.tags)	//a lesser negative is rewarded to items of the user's preffered interest 
-			return -1.0f;
-
-		if (interest1 != chosenItem.tags)
-			return -2.0f;
-	}
-
-
-	if (satisfaction <= 3)	//if the user is neither fully satisfied or unsatisfied give a small positive reward
-	{
-		if (interest1 == chosenItem.tags)
-			return 1.0f;
-
-		if (interest1 != chosenItem.tags)
-			return 0.5f;
-	}
-
-}
-
 int main()
 {
 	srand(time(NULL));
 
-	app.setUpItems();
-	app.calcNumOfStates();
 	app.createCombinations(0, ITEMS_VISIBLE);
 	tag interest = NoTag;
 
+	float learningRate = .1f;	//Q-learning algorithm variables
+	float discountFactor = 0.1f;
+	float maxQ = 3.0f;
+
 	int states = 0;
-
-	states = app.numOfStates;
-
-//	std::cout << states;
-
-	float learningRate = .1f;
-	float discountFactor = 0.25f;
-	float maxQ = 10.0f;
+	states = app.combinationCodes.size();
 
 	std::vector<std::vector<float>> Q;	//q matrix for each individual item
 	Q.resize(states);
@@ -105,102 +52,142 @@ int main()
 	if (input == 5)
 		interest = Sport;
 
-	//for (int i = 0; i < states; i++)	//add bias towards the user's prefferred interest at start 
-	//{
-	//	if(app.item1.at(app.combinationCodes.at(i).at(0)).tags == interest)
-	//		Q.at(i).at(0) += 0.1f;
-
-	//	if (app.item1.at(app.combinationCodes.at(i).at(1)).tags == interest)
-	//		Q.at(i).at(1) += 0.1f;
-
-	//	if (app.item1.at(app.combinationCodes.at(i).at(2)).tags == interest)
-	//		Q.at(i).at(2) += 0.1f;
-	//}
+	for(int i = 0; i < states; i++)
+		for(int j =0; j < ITEMS_VISIBLE; j++)
+			Q.at(i).at(j) = app.estimateReward(interest, app.item1.at(app.combinationCodes.at(i).at(j)));	//this adds a small bias to items within the user's stated preference
 
 	bool running = true;
 	int x = 0;
+	int loopCount = 0;
 
 	while (running)
 	{
+		loopCount++;
+		std::cout << "loop: " << loopCount << std::endl;
 		for (int i = 0; i < states; i++)	//update Qsum
 			QSum.at(i) = (Q.at(i).at(0) + Q.at(i).at(1) + Q.at(i).at(2));
 
 		std::cout << "---------------------" << std::endl;
-		//x = rand() % (TOTAL_ITEM_NUM * ITEMS_VISIBLE);
 		x = app.getCombination(QSum);
 
-		if (ITEMS_VISIBLE == 3)
+		std::cout << "Please select which item you are interested in using the number keys 1, 2 or 3.\nIf none of the items appeal to you, enter 9 to refresh.\nEnter 0 when you are done shopping." << std::endl;
+		std::cout << "Item 1: " << app.item1.at(app.combinationCodes.at(x).at(0)).name << "\nItem 2: "
+			<< app.item1.at(app.combinationCodes.at(x).at(1)).name << "\nItem 3: " << app.item1.at(app.combinationCodes.at(x).at(2)).name << "\n";
+
+		input = 0;
+		int satisfaction = 0;
+		float reward = 0;
+		float estReward = 0;
+		std::cin >> input;
+
+		std::cout << "Thank you for your selection" << std::endl;
+
+		if (input == 1)
 		{
-			std::cout << "Please select which item you are interested in using the number keys 1, 2 or 3.\nIf none of the items appeal to you, enter 9 to refresh.\nEnter 0 when you are done shopping." << std::endl;
-			std::cout << "Item 1: " << app.item1.at(app.combinationCodes.at(x).at(0)).name << "\nItem 2: "
-				<< app.item1.at(app.combinationCodes.at(x).at(1)).name << "\nItem 3: " << app.item1.at(app.combinationCodes.at(x).at(2)).name << "\n";
+			std::cout << "Are you happy with this item? Please rate from 1 to 5.\nItem: " << app.item1.at(app.combinationCodes.at(x).at(0)).name
+				<< " tags: " << app.getTextForEnum(app.item1.at(app.combinationCodes.at(x).at(0)).tags) << "\n";
 
-			input = 0;
-			int satisfaction = 0;
-			float reward = 0;
-			std::cin >> input;
+			std::cin >> satisfaction;
+			reward = app.calcReward(interest, app.item1.at(app.combinationCodes.at(x).at(0)), satisfaction);
 
-			std::cout << "Thank you for your selection" << std::endl;
+			for (int i = 0; i < states; i++)	//update weighting for each instance of this item in vector of items
+				for (int j = 0; j < ITEMS_VISIBLE; j++)
+				{
+					if (app.combinationCodes.at(i).at(j) == app.combinationCodes.at(x).at(0))
+						Q.at(i).at(j) = Q.at(i).at(j) + (learningRate * (reward + (discountFactor * maxQ) - Q.at(i).at(j)));
 
-			if (input == 1)
-			{
-				std::cout << "Are you happy with this item? Please rate from 1 to 5.\nItem: " << app.item1.at(app.combinationCodes.at(x).at(0)).name
-					<< " tags: " << app.getTextForEnum(app.item1.at(app.combinationCodes.at(x).at(0)).tags) << "\n";
+					else if(satisfaction >=3) {
+						estReward = app.estimateReward(app.item1.at(app.combinationCodes.at(x).at(0)).tags, app.item1.at(app.combinationCodes.at(i).at(j)));
+						if(estReward > 0.0f)
+							Q.at(i).at(j) = Q.at(i).at(j) + (learningRate * (estReward + (discountFactor * maxQ) - Q.at(i).at(j)));
+					}
+				}
 
-				std::cin >> satisfaction;
-				reward = calcReward(interest, app.item1.at(app.combinationCodes.at(x).at(0)), satisfaction);
+		}
 
-				for (int i = 0; i < states; i++)	//update weighting for each instance of this item in vector of items
-					for (int j = 0; j < ITEMS_VISIBLE; j++)
-						if (app.combinationCodes.at(i).at(j) == app.combinationCodes.at(x).at(0))
-							Q.at(i).at(j) = Q.at(i).at(j) + (learningRate * (reward + (discountFactor * maxQ) - Q.at(i).at(j)));
-			}
+		if (input == 2)
+		{
+			std::cout << "are you happy with this item? Please rate from 1 to 5.\nItem: " << app.item1.at(app.combinationCodes.at(x).at(1)).name
+				<< " tags: " << app.getTextForEnum(app.item1.at(app.combinationCodes.at(x).at(1)).tags) << "\n";
 
-			if (input == 2)
-			{
-				std::cout << "are you happy with this item? Please rate from 1 to 5.\nItem: " << app.item1.at(app.combinationCodes.at(x).at(1)).name
-					<< " tags: " << app.getTextForEnum(app.item1.at(app.combinationCodes.at(x).at(1)).tags) << "\n";
+			std::cin >> satisfaction;
+			reward = app.calcReward(interest, app.item1.at(app.combinationCodes.at(x).at(1)), satisfaction);
 
-				std::cin >> satisfaction;
-				reward = calcReward(interest, app.item1.at(app.combinationCodes.at(x).at(1)), satisfaction);
+			for (int i = 0; i < states; i++) //update weighting for each instance of this item in vector of items
+				for (int j = 0; j < ITEMS_VISIBLE; j++)
+				{
+					if (app.combinationCodes.at(i).at(j) == app.combinationCodes.at(x).at(1))
+						Q.at(i).at(j) = Q.at(i).at(j) + (learningRate * (reward + (discountFactor * maxQ) - Q.at(i).at(j)));
 
-				for (int i = 0; i < states; i++) //update weighting for each instance of this item in vector of items
-					for (int j = 0; j < ITEMS_VISIBLE; j++)
-						if (app.combinationCodes.at(i).at(j) == app.combinationCodes.at(x).at(1))
-							Q.at(i).at(j) = Q.at(i).at(j) + (learningRate * (reward + (discountFactor * maxQ) - Q.at(i).at(j)));
+					else if(satisfaction >= 3) {
+						estReward = app.estimateReward(app.item1.at(app.combinationCodes.at(x).at(1)).tags, app.item1.at(app.combinationCodes.at(i).at(j)));
+						if (estReward > 0.0f)
+							Q.at(i).at(j) = Q.at(i).at(j) + (learningRate * (estReward + (discountFactor * maxQ) - Q.at(i).at(j)));
+					}
+				}
+		}
 
-			}
+		if (input == 3)
+		{
+			std::cout << "are you happy with this item? Please rate from 1 to 5.\nItem: " << app.item1.at(app.combinationCodes.at(x).at(2)).name
+				<< " tags: " << app.getTextForEnum(app.item1.at(app.combinationCodes.at(x).at(2)).tags) << "\n";
 
-			if (input == 3)
-			{
-				std::cout << "are you happy with this item? Please rate from 1 to 5.\nItem: " << app.item1.at(app.combinationCodes.at(x).at(2)).name
-					<< " tags: " << app.getTextForEnum(app.item1.at(app.combinationCodes.at(x).at(2)).tags) << "\n";
+			std::cin >> satisfaction;
+			reward = app.calcReward(interest, app.item1.at(app.combinationCodes.at(x).at(2)), satisfaction);
 
-				std::cin >> satisfaction;
-				reward = calcReward(interest, app.item1.at(app.combinationCodes.at(x).at(2)), satisfaction);
+			for (int i = 0; i < states; i++) //update weighting for each instance of this item in vector of items
+				for (int j = 0; j < ITEMS_VISIBLE; j++)
+				{
+					if (app.combinationCodes.at(i).at(j) == app.combinationCodes.at(x).at(2))
+						Q.at(i).at(j) = Q.at(i).at(j) + (learningRate * (reward + (discountFactor * maxQ) - Q.at(i).at(j)));
 
-				for (int i = 0; i < states; i++) //update weighting for each instance of this item in vector of items
-					for (int j = 0; j < ITEMS_VISIBLE; j++)
-						if (app.combinationCodes.at(i).at(j) == app.combinationCodes.at(x).at(2))
-							Q.at(i).at(j) = Q.at(i).at(j) + (learningRate * (reward + (discountFactor * maxQ) - Q.at(i).at(j)));
-			}
+					else if(satisfaction >= 3) {
+						estReward = app.estimateReward(app.item1.at(app.combinationCodes.at(x).at(2)).tags, app.item1.at(app.combinationCodes.at(i).at(j)));
+						if (estReward > 0.0f)
+							Q.at(i).at(j) = Q.at(i).at(j) + (learningRate * (estReward + (discountFactor * maxQ) - Q.at(i).at(j)));
+					}
+				}
 		}
 
 		if (input == 9)
+		{
+			std::cout << "No item selected\n";
+			float reward = 0;
+			//std::cin >> satisfaction;
+			for(int i = 0; i < ITEMS_VISIBLE; i++)
+				reward += app.calcReward(interest, app.item1.at(app.combinationCodes.at(x).at(i)), NULL);
+
+			for (int i = 0; i < states; i++) //update weighting for each instance of this item in vector of items
+				for (int j = 0; j < ITEMS_VISIBLE; j++)
+					if (app.combinationCodes.at(i).at(j) == app.combinationCodes.at(x).at(j))
+						Q.at(i).at(j) = Q.at(i).at(j) + (learningRate * (reward + (discountFactor * maxQ) - Q.at(i).at(j)));
 			continue;
+		}
 
 		if (input == 0)
 			running = false;
 	}
-
-	for(int i = 0; i < states; i++)
-		vFloatPrint(Q.at(i));	
-
-	//for (int i = 0; i < states; i++)
-	vFloatPrint(QSum);
-	
-	for(int i = 0; i < states; i++)
-		vIntPrint1(app.combinationCodes.at(i));
-
 	std::cin.get();
+
+	std::ofstream outputFile("./QSum.txt");
+	std::ostream_iterator<float> outputIt(outputFile, "\n");
+	std::copy(QSum.begin(), QSum.end(), outputIt);	
+
+	std::ofstream outputFile1("./Qindiv.txt");
+	std::ostream_iterator<float> outputIt1(outputFile1, " " );
+	for (int i = 0; i < states; i++)
+	{
+		//outputFile1 << "combination " << i+1 << ": ";
+		std::copy(Q.at(i).begin(), Q.at(i).end(), outputIt1);
+		outputFile1 << "\n";
+	}	
+	
+	std::ofstream outputFile2("./combinationCodes.txt");
+	std::ostream_iterator<int> outputIt2(outputFile2, " " );
+	for (int i = 0; i < states; i++)
+	{
+		//outputFile2 << "combination code " << i+1 << ": ";
+		std::copy(app.combinationCodes.at(i).begin(), app.combinationCodes.at(i).end(), outputIt2);
+		outputFile2 << "\n";
+	}
 }
